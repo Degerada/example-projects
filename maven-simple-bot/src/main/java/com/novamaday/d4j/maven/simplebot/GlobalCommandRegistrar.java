@@ -9,10 +9,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.net.URISyntaxException;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
 public class GlobalCommandRegistrar {
@@ -53,30 +52,42 @@ public class GlobalCommandRegistrar {
 
     /* The two below methods are boilerplate that can be completely removed when using Spring Boot */
 
-    private static List<String> getCommandsJson() throws IOException {
+    private List<String> getCommandsJson() throws IOException {
         //The name of the folder the commands json is in, inside our resources folder
         final String commandsFolderName = "commands/";
 
-        //Get the folder as a resource
-        URL url = GlobalCommandRegistrar.class.getClassLoader().getResource(commandsFolderName);
-        Objects.requireNonNull(url, commandsFolderName + " could not be found");
+        List<String> resourcePaths = new ArrayList<>();
 
-        File folder;
-        try {
-            folder = new File(url.toURI());
-        } catch (URISyntaxException e) {
-            folder = new File(url.getPath());
+        //Read the contents of the JarFile
+        try (JarFile jarFile = new JarFile(new File(this.getClass().getProtectionDomain().getCodeSource().getLocation().toURI()))) {
+            final Enumeration<JarEntry> entries = jarFile.entries();
+            while (entries.hasMoreElements()) {
+                final JarEntry entry = entries.nextElement();
+                final String entryName = entry.getName();
+                if(entry.isDirectory()){ // We don't try to read file-content of a directory
+                    continue;
+                }
+
+                if (entryName.startsWith(commandsFolderName)) {
+                    LOGGER.debug(entryName);
+                    resourcePaths.add(entryName);
+                }
+            }
+
+        } catch (URISyntaxException exception) {
+            LOGGER.error("Could not read contents of JarFile!");
         }
 
-        //Get all the files inside this folder and return the contents of the files as a list of strings
-        List<String> list = new ArrayList<>();
-        File[] files = Objects.requireNonNull(folder.listFiles(), folder + " is not a directory");
+        LOGGER.debug(resourcePaths.toString());
 
-        for (File file : files) {
-            String resourceFileAsString = getResourceFileAsString(commandsFolderName + file.getName());
-            list.add(resourceFileAsString);
+        //Read the file contents of all found files and return them
+        List<String> fileContents = new ArrayList<>();
+        for (String resourcePath : resourcePaths) {
+            String resourceFileAsString = getResourceFileAsString(resourcePath);
+            LOGGER.debug(resourceFileAsString);
+            fileContents.add(resourceFileAsString);
         }
-        return list;
+        return fileContents;
     }
 
     /**
